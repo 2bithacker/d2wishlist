@@ -110,20 +110,17 @@ class Weapon(object):
 
     def finish(self, parser):
         self.condense_pvp()
-
+        index = 0
         try:
             for r in self.recs:
                 try:
-                    if "pve" in r.tags:
-                        descr = self.description[0]
-                    else:
-                        descr = self.description[1]
+                    descr = self.description[index]
                 except IndexError:
                     descr = ""
-
                 r.print_wishlist(parser, self.item, descr)
                 if self.adept:
                     r.print_wishlist(parser, self.adept, descr)
+                index+=1
         except LookupError as e:
             print(f"Error while printing {self.item}: {e}")
             raise
