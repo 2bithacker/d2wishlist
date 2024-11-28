@@ -168,7 +168,7 @@ class PandaText(object):
 
             return
 
-        for perktype in ("Sights:", "Magazine:", "Perk 1:", "Perk 2:"):
+        for perktype in ("Barrel:", "Sights:", "Magazine:", "Perk 1:", "Perk 2:"):
             if perktype in line:
                 m = re.match(r".*: (.*)$", line)
                 if "Eyes Up, Guardian" == m.group(1):
