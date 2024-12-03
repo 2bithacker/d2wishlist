@@ -13,6 +13,82 @@ PLUGSETDEF = "DestinyPlugSetDefinition"
 
 # socketCategories[].socketCategoryHash for weapon perks
 WEAPON_PERKS = 4241085061
+ARMOR_PERKS = 2518356196
+
+# Some items, like Exotic Class Items, don't have a plug set in the manifest to define
+# the available options, so we can specify them here to override the manifest
+# SOCKET_OVERRIDES[itemHash][socket][perkHash]
+SOCKET_OVERRIDES = {
+    # Stoicism
+    266021826: {
+        10: [
+            1476923952,
+            1476923953,
+            1476923954,
+            3573490509,
+            3573490508,
+            3573490511,
+            3573490510,
+            3573490505,
+        ],
+        11: [
+            1476923955,
+            1476923956,
+            1476923957,
+            3573490504,
+            3573490507,
+            3573490506,
+            3573490501,
+            3573490500,
+        ],
+    },
+    # Solipsism
+    2273643087: {
+        10: [
+            1476923952,
+            1476923953,
+            1476923954,
+            183430248,
+            183430255,
+            183430252,
+            183430253,
+            183430250,
+        ],
+        11: [
+            1476923955,
+            1476923956,
+            1476923957,
+            183430251,
+            183430254,
+            183430249,
+            183430246,
+            183430247,
+        ],
+    },
+    # Relativism
+    2809120022: {
+        10: [
+            1476923952,
+            1476923953,
+            1476923954,
+            3751917999,
+            3751917998,
+            3751917997,
+            3751917996,
+            3751917995,
+        ],
+        11: [
+            1476923955,
+            1476923956,
+            1476923957,
+            3751917994,
+            3751917993,
+            3751917992,
+            3751917991,
+            3751917990,
+        ],
+    },
+}
 
 
 @lru_cache(maxsize=128)
@@ -64,15 +140,33 @@ class InventoryItem(object):
     def __repr__(self):
         return f"{self.name} [{self.hash}]"
 
+    def pprint(self):
+        print(self)
+        for s in self.sockets:
+            print("  - socket:")
+            for perk in s:
+                print(f"    - {s[perk]}")
+
     def load_sockets(self):
         if "sockets" not in self.definition:
+            return
+
+        # Load override perks if available
+        if int(self.hash) in SOCKET_OVERRIDES:
+            sockets = SOCKET_OVERRIDES[int(self.hash)]
+            for s in sockets:
+                plugs = dict()
+                for perk in sockets[s]:
+                    plugitem = InventoryItem(perk)
+                    plugs[plugitem.hash] = plugitem
+                self.sockets.append(plugs)
             return
 
         # Find sockets for weapon perks
         socket_indexes = [
             s["socketIndexes"]
             for s in self.definition["sockets"]["socketCategories"]
-            if s["socketCategoryHash"] == WEAPON_PERKS
+            if s["socketCategoryHash"] in (WEAPON_PERKS, ARMOR_PERKS)
         ][0]
         for i in socket_indexes:
             plugs = dict()

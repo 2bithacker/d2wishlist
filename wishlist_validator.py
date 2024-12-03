@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from destiny_manifest import InventoryItem
+from destiny_manifest import InventoryItem, LookupError
 
 import fileinput
 import urllib.parse
@@ -21,24 +21,32 @@ class DIMWishlist(object):
 
     def validate(self, item, perks):
         roll = dict()
-        for perk_hash in perks:
-            n = 0
-            for s in item.sockets:
-                try:
-                    perk_info = s[perk_hash]
-                    if n in roll:
-                        raise ValidationError(
-                            f"Two perks in same column! {roll[n]['displayProperties']['name']} [{roll[n]['hash']}] and {perk_info['displayProperties']['name']} [{perk_info['hash']}]"
-                        )
-                    roll[n] = perk_info
+        perk_items = dict()
+
+        for perkhash in perks:
+            try:
+                perk_items[perkhash] = InventoryItem(perkhash)
+            except LookupError as e:
+                raise ValidationError(f"Perk {perkhash} doesn't exit in manifest: {e}")
+
+        perks_to_find = perks.copy()
+
+        for slot in range(0, len(item.sockets)):
+            socket = item.sockets[slot]
+            for perk in perks_to_find:
+                if perk in socket:
+                    roll[slot] = socket[perk]
+                    perks_to_find.remove(perk)
                     break
-                except KeyError:
-                    n += 1
-                    continue
+
+        if perks_to_find:
+            raise ValidationError(
+                f"Unable to find socket for perks: {', '.join([str(perk_items[x]) for x in perks_to_find])}"
+            )
 
         if len(perks) > len(roll):
             r = set([str(x.hash) for x in roll.values()])
-            missing = [InventoryItem(x) for x in perks if x not in r]
+            missing = [perk_items[x] for x in perks if x not in r]
             raise ValidationError(
                 f"Perks not in manifest: {', '.join([str(x) for x in missing])}"
             )
@@ -50,22 +58,21 @@ class DIMWishlist(object):
         itemdict = urllib.parse.parse_qs(line[12:])
         itemhash = itemdict["item"][0]
 
-        if self.last_item and self.last_item.hash == itemhash:
-            item = self.last_item
-        else:
-            item = InventoryItem(itemhash)
-            self.last_item = item
-
         try:
+            if self.last_item and self.last_item.hash == itemhash:
+                item = self.last_item
+            else:
+                item = InventoryItem(itemhash)
+                self.last_item = item
+
             self.validate(item, itemdict["perks"][0].split(","))
 
-        #            roll = self.validate(item, itemdict["perks"][0].split(','))
-        #            perks = ", ".join([r.name for r in roll.values()])
-        #            console.print(f"{self.lineno} [blue]{item}[/blue] [green]Valid![/green] {perks}")
         except ValidationError as e:
             console.print(f"{self.lineno} [blue]{item}[/blue] [red]Error![/red] {e}")
         except LookupError as e:
-            console.print(f"{self.lineno} [blue]{item}[/blue] [red]Error![/red] {e}")
+            console.print(
+                f"{self.lineno} [blue]{itemhash}[/blue] [red]Error![/red] {e}"
+            )
 
     def process_line(self, rawline):
         line = rawline.strip()
@@ -84,6 +91,8 @@ class DIMWishlist(object):
             return
 
         if line.startswith("dimwishlist:"):
+            if "#" in line:
+                (line, notes) = line.split("#", 1)
             try:
                 self.process_item(line)
             except:
