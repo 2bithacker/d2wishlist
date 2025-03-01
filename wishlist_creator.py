@@ -83,7 +83,7 @@ class Recommendation(object):
 class Weapon(object):
     def __init__(self, item):
         self.item = item
-        self.adept = None
+        self.variants = []
         self.recs = []
         self.description = []
 
@@ -118,8 +118,8 @@ class Weapon(object):
                 except IndexError:
                     descr = ""
                 r.print_wishlist(parser, self.item, descr)
-                if self.adept:
-                    r.print_wishlist(parser, self.adept, descr)
+                for variant in self.variants:
+                    r.print_wishlist(parser, variant, descr)
                 index+=1
         except LookupError as e:
             print(f"Error while printing {self.item}: {e}")
@@ -145,11 +145,18 @@ class PandaText(object):
             m = re.match(r".*https://light.gg/db/items/([0-9]+)/.*", line)
             item = InventoryItem(m.group(1))
 
-            if "(Adept)" in item.name:
-                self.weapon.adept = item
-            else:
-                if self.weapon:
+            if self.weapon:
+                if self.weapon.recs:
+                    # We have a weapon already, and it has recommendations
+                    # so finish it up and make a new one
                     self.weapon.finish(self)
+                    self.weapon = Weapon(item)
+                else:
+                    # We have a weapon, but it has no recommendations
+                    # so this is a variant item, usually an Adept
+                    self.weapon.variants.append(item)
+            else:
+                # We have no weapon, so start one
                 self.weapon = Weapon(item)
 
             return
