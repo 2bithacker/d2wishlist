@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-from destiny_manifest import InventoryItem, LookupError
-
 import fileinput
 import urllib.parse
 
 from rich.console import Console
+
+from destiny_manifest import InventoryItem, LookupError
 
 console = Console()
 

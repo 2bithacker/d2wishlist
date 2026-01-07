@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 
-from destiny_manifest import InventoryItem
-
-import fileinput
-import re
 import itertools
 
-TAGMAP = {
+import click
+import yaml
+
+import destiny_manifest
+import dim_additional
+
+TAG_MAP = {
     "pvp": "PvP",
     "pve": "PvE",
+    "god-pve": "God-PvE",
+    "god-pvp": "God-PvP",
     "mkb": "M+KB",
     "controller": "Controller",
     "dps": "DPS",
     "gambit": "Gambit",
 }
-TAGORDER = tuple(TAGMAP.keys())
+TAG_ORDER = tuple(TAG_MAP.keys())
 
 
-def tagsort(x):
-    return TAGORDER.index(x)
+def tag_sort(x):
+    return TAG_ORDER.index(x)
 
 
 class LookupError(Exception):
@@ -30,20 +34,21 @@ class Recommendation(object):
         self.tags = []
         self.perks = []
         self.masterwork = None
+        self.description = None
 
     def __str__(self):
         return f"tags={','.join(self.tags)} masterwork={self.masterwork}"
 
-    def print_wishlist(self, parser, item, description):
+    def write_wishlist(self, fh, wishlist, item_def, item):
         # sort and pretty up the tags
-        tags = sorted(self.tags, key=tagsort)
-        tag_string = " / ".join([TAGMAP.get(t, f"??? {t} ???") for t in tags])
+        tags = sorted(self.tags, key=tag_sort)
+        tag_string = " / ".join([TAG_MAP.get(t, f"??? {t} ???") for t in tags])
 
-        tagstr = ""
-        tagstag = ""
+        tag_str = ""
+        tags_tag = ""
         if tag_string:
-            tagstr = f" ({tag_string})"
-            tagstag = f"|tags:{','.join(tags)}"
+            tag_str = f" ({tag_string})"
+            tags_tag = f"|tags:{','.join(tags)}"
 
         mw = ""
         if self.masterwork:
@@ -52,156 +57,136 @@ class Recommendation(object):
         # translate perks to their hashes
         hashes = []
         for slot in self.perks:
-            perkhashes = []
+            perk_hashes = []
             for perk in slot:
-                perkhash = None
+                perk_hash = None
 
                 for sock in item.sockets:
                     try:
-                        perkhash = [p for p in sock.values() if p.name == perk][0]
+                        perk_hash = [p for p in sock.values() if p.name == perk][0]
                     except IndexError:
                         continue
                     else:
                         break
 
-                if perkhash:
-                    perkhashes.append(perkhash)
+                if perk_hash:
+                    perk_hashes.append(perk_hash)
                 else:
-                    raise LookupError(f"Could not find hash for perk {perk}!")
-            hashes.append(perkhashes)
+                    raise LookupError(f"Could not find hash for perk {perk} on {item}!")
+            hashes.append(perk_hashes)
 
-        print(f"// {item.name}")
-        print(f'//notes:{parser.reviewer}{tagstr}: "{description}"{mw}{tagstag}')
+        fh.write(f"// {item.name} (Season {item_def.season})\n")
+        fh.write(
+            f'//notes:{wishlist.author}{tag_str}: "{self.description}"{mw}{tags_tag}\n'
+        )
 
         for roll in itertools.product(*hashes):
             perk_string = ",".join([p.hash for p in roll])
-            print(f"dimwishlist:item={item.hash}&perks={perk_string}")
+            roll_string = f"item={item.hash}&perks={perk_string}"
+            if roll_string not in item_def.written_perks:
+                item_def.written_perks.add(roll_string)
+                fh.write(f"dimwishlist:{roll_string}\n")
 
-        print("")
+        fh.write("\n")
 
 
-class Weapon(object):
-    def __init__(self, item):
-        self.item = item
+class ItemDefinition(object):
+    def __init__(self, item_hash):
+        self.item = destiny_manifest.InventoryItem(item_hash)
         self.variants = []
         self.recs = []
-        self.description = []
+        self.season = dim_additional.get_season(self.item)
+        self.written_perks = set()
 
-    def condense_pvp(self):
-        pvp_rolls = [r for r in self.recs if "pvp" in r.tags]
+    def find_variants(self):
+        dupe_hashes = destiny_manifest.find_duplicates(self.item)
+        for item_hash in dupe_hashes:
+            item_hash = item_hash[0]
+            if int(item_hash) == int(self.item.hash):
+                continue
+            item = destiny_manifest.InventoryItem(item_hash)
+            season = dim_additional.get_season(item)
+            if self.season == season:
+                self.variants.append(item)
 
-        if len(pvp_rolls) != 2:
-            return
-
-        if pvp_rolls[0].masterwork != pvp_rolls[1].masterwork:
-            return
-
-        for i in range(len(pvp_rolls[0].perks)):
-            l1 = pvp_rolls[0].perks[i]
-            l2 = pvp_rolls[1].perks[i]
-            if l1 != l2:
-                return
-
-        # Add unique tags from the second roll to the first
-        tags = [t for t in pvp_rolls[1].tags if t not in pvp_rolls[0].tags]
-        pvp_rolls[0].tags.extend(tags)
-
-        self.recs.remove(pvp_rolls[1])
-
-    def finish(self, parser):
-        self.condense_pvp()
-        index = 0
-        try:
-            for r in self.recs:
-                try:
-                    descr = self.description[index]
-                except IndexError:
-                    descr = ""
-                r.print_wishlist(parser, self.item, descr)
-                for variant in self.variants:
-                    r.print_wishlist(parser, variant, descr)
-                index+=1
-        except LookupError as e:
-            print(f"Error while printing {self.item}: {e}")
-            raise
+    def write_wishlist(self, fh, wishlist):
+        self.find_variants()
+        for roll in self.recs:
+            roll.write_wishlist(fh, wishlist, self, self.item)
+            for variant in self.variants:
+                roll.write_wishlist(fh, wishlist, self, variant)
 
 
-class PandaText(object):
-    def __init__(self):
-        self.heading = None
-        self.reviewer = "pandapaxxy"
-        self.weapon = None
+class Wishlist(object):
+    def __init__(self, input, output):
+        self.input_file = input
+        self.output_file = output
+        self.data = None
+        self.items = []
 
-    def process_line(self, rawline):
-        line = rawline.strip()
+        self.title = None
+        self.description = None
+        self.author = None
 
-        # Start of section, should probably split into separate output files
-        if line.startswith("###"):
-            self.heading = line[3:]
-            return
+    def run(self):
+        self._read_input()
 
-        # Start of a new item section
-        if line.startswith("**["):
-            m = re.match(r".*https://light.gg/db/items/([0-9]+)/.*", line)
-            item = InventoryItem(m.group(1))
+        with click.progressbar(
+            self.data["wishlist"], label="Creating objects..."
+        ) as bar:
+            for item in bar:
+                self._process_item(item)
 
-            if self.weapon:
-                if self.weapon.recs:
-                    # We have a weapon already, and it has recommendations
-                    # so finish it up and make a new one
-                    self.weapon.finish(self)
-                    self.weapon = Weapon(item)
-                else:
-                    # We have a weapon, but it has no recommendations
-                    # so this is a variant item, usually an Adept
-                    self.weapon.variants.append(item)
-            else:
-                # We have no weapon, so start one
-                self.weapon = Weapon(item)
+        with click.open_file(self.output_file, "w") as fh:
+            fh.write(f"title:{self.title}\n")
+            fh.write(f"description:{self.description}\n\n")
 
-            return
+            with click.progressbar(self.items, label="Writing wishlist...") as bar:
+                for item in bar:
+                    self._write_output(fh, item)
 
-        if line.startswith("Recommended"):
-            rec = Recommendation()
+    def _read_input(self):
+        click.echo(f"Reading in {click.format_filename(self.input_file)}...")
+        with click.open_file(self.input_file, "r") as fh:
+            self.data = yaml.load(fh, Loader=yaml.Loader)
 
-            if "PvE" in line:
-                rec.tags = ["pve", "mkb", "controller"]
-            if "Controller PvP" in line:
-                rec.tags = ["pvp", "controller"]
-            if "MnK PvP" in line:
-                rec.tags = ["pvp", "mkb"]
+        self.title = self.data["title"]
+        self.description = self.data["description"]
+        self.author = self.data["author"]
 
-            self.weapon.recs.append(rec)
+        click.echo(
+            f"{self.description} by {self.author} with {len(self.data['wishlist'])} items."
+        )
 
-            return
+    def _process_item(self, item_data: dict):
+        if isinstance(item_data["hash"], int):
+            item_def = ItemDefinition(item_data["hash"])
+        else:
+            item_def = ItemDefinition(item_data["hash"][0])
+            item_def.variants.extend(
+                [destiny_manifest.InventoryItem(hash) for hash in item_data["hash"][1:]]
+            )
+        for roll_data in item_data["rolls"]:
+            roll = Recommendation()
+            roll.tags = roll_data["tags"]
+            for perk_data in roll_data["perks"]:
+                roll.perks.append(perk_data)
+            roll.masterwork = ", ".join(roll_data["masterwork"])
+            roll.description = roll_data["text"]
+            item_def.recs.append(roll)
+        self.items.append(item_def)
 
-        for perktype in ("Barrel:", "Sights:", "Magazine:", "Perk 1:", "Perk 2:"):
-            if perktype in line:
-                m = re.match(r".*: (.*)$", line)
-                if "Eyes Up, Guardian" == m.group(1):
-                    perks = ["Eyes Up, Guardian"]
-                else:
-                    perks = [p.strip() for p in m.group(1).rstrip(",").split(",")]
-                self.weapon.recs[-1].perks.append(perks)
-                return
+    def _write_output(self, fh, item_def):
+        item_def.write_wishlist(fh, self)
 
-        if "Masterwork:" in line:
-            m = re.match(r".*Masterwork: (.*)$", line)
-            self.weapon.recs[-1].masterwork = m.group(1)
 
-            return
-
-        if line.startswith(("Source:", "Curated Roll:", "- ")):
-            return
-
-        if self.weapon and len(line) > 10:
-            self.weapon.description.append(line)
-            return
+@click.command()
+@click.argument("filename")
+@click.option("--output", prompt="Output file", help="File to write wishlist to")
+def main(filename: str, output: str):
+    wishlist = Wishlist(filename, output)
+    wishlist.run()
 
 
 if __name__ == "__main__":
-    parser = PandaText()
-    for line in fileinput.input(encoding="utf-8"):
-        parser.process_line(line)
-    if parser.weapon:
-        parser.weapon.finish(parser)
+    main()

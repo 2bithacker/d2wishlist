@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import sqlite3
 import json
-
+import sqlite3
 from functools import lru_cache
 
 manifest = sqlite3.connect("manifest.sqlite3")
@@ -99,8 +98,48 @@ def query_manifest(table, hash):
     row = r.fetchone()
     if not row:
         raise LookupError(f"No {table} for {hash}")
-    itemdef = json.loads(row[0])
-    return itemdef
+    return json.loads(row[0])
+
+
+def weapons_by_watermark(watermark: str) -> list:
+    c = manifest.cursor()
+    r = c.execute(
+        """
+        SELECT
+          json_extract(item.json, "$.hash")
+        FROM
+          DestinyInventoryItemDefinition AS item
+        WHERE
+          json_extract(item.json, "$.iconWatermark") = ?
+          AND json_extract(item.json, "$.itemType") = 3
+        """,
+        (watermark,),
+    )
+    return r.fetchall()
+
+
+def find_duplicates(item: object) -> list:
+    c = manifest.cursor()
+    r = c.execute(
+        """
+        SELECT
+          json_extract(item.json, "$.hash")
+        FROM
+          DestinyInventoryItemDefinition AS item
+        WHERE
+          json_extract(item.json, "$.displayProperties.name") LIKE ?
+          AND json_extract(item.json, "$.inventory.bucketTypeHash") = ?
+          AND NOT EXISTS (
+            SELECT *
+            FROM
+              json_each(json_extract(item.json, "$.itemCategoryHashes"))
+            WHERE
+              json_each.value = 3109687656
+          )
+        """,
+        (f"{item.name}%", item.definition["inventory"]["bucketTypeHash"]),
+    )
+    return r.fetchall()
 
 
 def sql_id(hash):
@@ -126,6 +165,27 @@ class PlugSet(object):
         ]
 
 
+class ManifestObject(object):
+    _table = "DUMMY"
+
+    def __init__(self, hash):
+        self.hash = str(hash)
+        self.definition = query_manifest(self._table, hash)
+
+    def __str__(self):
+        return f"{self.name} [{self.hash}]"
+
+    def __repr__(self):
+        return f"{self.name} [{self.hash}]"
+
+    def __getattr__(self, name):
+        return self.definition[name]
+
+
+class Collectible(ManifestObject):
+    _table = "DestinyCollectibleDefinition"
+
+
 class InventoryItem(object):
     def __init__(self, hash):
         self.hash = str(hash)
@@ -140,12 +200,21 @@ class InventoryItem(object):
     def __repr__(self):
         return f"{self.name} [{self.hash}]"
 
+    def __getattr__(self, name):
+        return self.definition[name]
+
     def pprint(self):
         print(self)
         for s in self.sockets:
             print("  - socket:")
             for perk in s:
                 print(f"    - {s[perk]}")
+
+    def collectible(self):
+        if "collectibleHash" not in self.definition:
+            return None
+
+        return Collectible(self.collectibleHash)
 
     def load_sockets(self):
         if "sockets" not in self.definition:
