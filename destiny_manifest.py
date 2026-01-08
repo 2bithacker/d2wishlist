@@ -127,7 +127,8 @@ def find_duplicates(item: object) -> list:
         FROM
           DestinyInventoryItemDefinition AS item
         WHERE
-          json_extract(item.json, "$.displayProperties.name") LIKE ?
+          id != ?
+          AND json_extract(item.json, "$.displayProperties.name") LIKE ?
           AND json_extract(item.json, "$.inventory.bucketTypeHash") = ?
           AND NOT EXISTS (
             SELECT *
@@ -137,7 +138,11 @@ def find_duplicates(item: object) -> list:
               json_each.value = 3109687656
           )
         """,
-        (f"{item.name}%", item.definition["inventory"]["bucketTypeHash"]),
+        (
+            sql_id(item.hash),
+            f"{item.name}%",
+            item.definition["inventory"]["bucketTypeHash"],
+        ),
     )
     return r.fetchall()
 
@@ -257,5 +262,9 @@ class InventoryItem(object):
                 plugset = PlugSet(entry[plug_type])
                 for plugitem in plugset.reusable_plug_items():
                     plugs[plugitem.hash] = plugitem
+
+            # Filter for tierType 2 (Common) perks only, to avoid pulling
+            # in all the enhanced versions.
+            plugs = {p: plugs[p] for p in plugs if plugs[p].inventory["tierType"] == 2}
 
             self.sockets.append(plugs)
