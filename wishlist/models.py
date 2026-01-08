@@ -27,24 +27,27 @@ class Roll(BaseModel):
             perk_set_socket = None
             for socket in inv_item.sockets:
                 for socket_item in socket.values():
-                    if socket_item.name == perk_set[0]:
+                    if socket_item.name.casefold() == perk_set[0].casefold():
                         perk_set_socket = socket
                         break
                 if perk_set_socket:
                     break
             if not perk_set_socket:
-                raise LookupError(f"Could not find '{perk_set[0]}' on {inv_item}")
+                raise LookupError(
+                    f"Could not find '{perk_set[0].casefold()}' on {inv_item}"
+                )
 
             perk_item_map = {
-                perk_set_socket[p].name: perk_set_socket[p] for p in perk_set_socket
+                perk_set_socket[p].name.casefold(): perk_set_socket[p]
+                for p in perk_set_socket
             }
             perk_set_items = []
             for perk in perk_set:
                 try:
-                    perk_set_items.append(perk_item_map[perk])
+                    perk_set_items.append(perk_item_map[perk.casefold()])
                 except KeyError:
                     raise LookupError(
-                        f"Could not find '{perk}' on {inv_item} socket: {perk_item_map.keys()}"
+                        f"Could not find '{perk.casefold()}' on {inv_item} socket: {perk_item_map.keys()}"
                     )
             self._perk_items.append(perk_set_items)
 
