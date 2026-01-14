@@ -6,8 +6,8 @@ import re
 
 import bs4
 
-import destiny_manifest
-import dim_additional
+import d2wishlist.manifest as manifest
+import d2wishlist.dim_additional as dim_additional
 
 TAGMAP = {
     "pvp": "PvP",
@@ -93,12 +93,12 @@ class Weapon(object):
         self.season = dim_additional.get_season(self.item)
 
     def find_variants(self):
-        dupe_hashes = destiny_manifest.find_duplicates(self.item)
+        dupe_hashes = manifest.find_duplicates(self.item)
         for item_hash in dupe_hashes:
             item_hash = item_hash[0]
             if int(item_hash) == int(self.item.hash):
                 continue
-            item = destiny_manifest.InventoryItem(item_hash)
+            item = manifest.InventoryItem(item_hash)
             season = dim_additional.get_season(item)
             if self.season == season:
                 self.variants.append(item)
@@ -159,8 +159,8 @@ class SpaceMonkey(object):
                 r".*light.gg/db/items/([0-9]+)/.*", node.get("href")
             ).group(1)
             try:
-                item = destiny_manifest.InventoryItem(item_id)
-            except destiny_manifest.LookupError as e:
+                item = manifest.InventoryItem(item_id)
+            except manifest.LookupError as e:
                 print(f"ERROR: {e}")
                 continue
             weapon = self.process_item(item, node)
