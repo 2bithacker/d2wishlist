@@ -4,7 +4,7 @@ import fileinput
 import itertools
 import re
 
-from destiny_manifest import InventoryItem
+from d2wishlist.manifest import InventoryItem
 
 TAGMAP = {
     "pvp": "PvP",

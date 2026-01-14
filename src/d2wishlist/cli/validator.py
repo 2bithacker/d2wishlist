@@ -5,7 +5,7 @@ import urllib.parse
 
 from rich.console import Console
 
-from destiny_manifest import InventoryItem, LookupError
+from d2wishlist.manifest import InventoryItem, LookupError
 
 console = Console()
 

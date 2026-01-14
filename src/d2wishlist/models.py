@@ -3,8 +3,8 @@ from typing import Optional
 from pydantic import BaseModel, PrivateAttr, model_validator
 from typing_extensions import Self
 
-import destiny_manifest
-import dim_additional
+import d2wishlist.dim_additional as dim_additional
+import d2wishlist.manifest as manifest
 
 
 class Roll(BaseModel):
@@ -14,7 +14,7 @@ class Roll(BaseModel):
     text: str
     _perk_items: list = PrivateAttr(default_factory=list)
 
-    def validate_perks(self, inv_item: destiny_manifest.InventoryItem) -> Self:
+    def validate_perks(self, inv_item: manifest.InventoryItem) -> Self:
         """
         Loads the Destiny Manifest definitions for this roll's perks and
         confirms they fit correctly on the given inv_item.
@@ -59,7 +59,7 @@ class Item(BaseModel):
     hash: int | list[int]
     rolls: list[Roll]
     season: Optional[int] = None
-    _inventory_item: destiny_manifest.InventoryItem
+    _inventory_item: manifest.InventoryItem
     _variants: list = PrivateAttr(default_factory=list)
 
     @model_validator(mode="after")
@@ -70,11 +70,11 @@ class Item(BaseModel):
         if isinstance(self.hash, list):
             primary = self.hash[0]
             for variant in self.hash[1:]:
-                item = destiny_manifest.InventoryItem(variant)
+                item = manifest.InventoryItem(variant)
                 self._variants.append(item)
             self.hash = primary
 
-        self._inventory_item = destiny_manifest.InventoryItem(self.hash)
+        self._inventory_item = manifest.InventoryItem(self.hash)
 
         for roll in self.rolls:
             roll.validate_perks(self._inventory_item)
@@ -82,10 +82,10 @@ class Item(BaseModel):
         if not self.season:
             self.season = dim_additional.get_season(self._inventory_item)
 
-        dupe_hashes = destiny_manifest.find_duplicates(self._inventory_item)
+        dupe_hashes = manifest.find_duplicates(self._inventory_item)
         for item_hash in dupe_hashes:
             item_hash = item_hash[0]
-            item = destiny_manifest.InventoryItem(item_hash)
+            item = manifest.InventoryItem(item_hash)
             season = dim_additional.get_season(item)
             if self.season == season:
                 self._variants.append(item)
