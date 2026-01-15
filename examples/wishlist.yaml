@@ -1,0 +1,28 @@
+---
+title: Example Wishlist
+description: Just an example of the YAML wishlist format
+author: 2bithacker
+wishlist:
+  - name: Duty Bound # this isn't actually used by the script, but is helpful in this format to keep track of weapons
+    hash: 260532765 # this is how the script IDs the item, can be found in the URL on light.gg or on data.destinysets.com
+    rolls:
+      - tags: [pve]
+        perks:
+          - [Arrowhead Brake, Full Bore]
+          - [Alloy Magazine, Steady Rounds]
+          - [Enlightened Action, Zen Moment]
+          - [All-Star, Triple Tap]
+        masterwork: [Range, Reload]
+        text: >-
+          This is a block of descriptive text about this particular roll, it's
+          freeform, but will be collapsed into a single line in the final
+          output.
+      - tags: [pvp]
+        perks:
+          - [Corkscrew Rifling, Full Bore]
+          - [Flared Magwell, Steady Rounds]
+          - [Enlightened Action, Stopping Power]
+          - [Onslaught, Triple Tap]
+        masterwork: [Range, Reload]
+        text: >-
+          And this is the text for this roll.
